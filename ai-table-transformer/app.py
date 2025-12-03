@@ -34,6 +34,8 @@ if "transform_code" not in st.session_state:
     st.session_state.transform_code = ""
 if "template_loaded" not in st.session_state:
     st.session_state.template_loaded = None
+if "skip_merge" not in st.session_state:
+    st.session_state.skip_merge = False
 
 
 # ---------- Step 0: Template load / save ----------
@@ -109,106 +111,133 @@ table_names = list(st.session_state.tables.keys())
 
 st.markdown("---")
 
-# ---------- Step 2: Configure join rules (manual but with suggestions) ----------
-st.header("Step 2: Configure Join Rules (Manual, with Suggestions)")
+# ⭐ 新增：允许跳过 Step 2，直接上传已经合并好的总表
+st.subheader("Optional: Use an already merged table")
 
-st.caption(
-    "You can define how tables are joined. This tool does NOT auto-chain joins; "
-    "you control each join rule for maximum reliability."
+skip_merge_checkbox = st.checkbox(
+    "I already have a fully merged table and want to skip joining in Step 2",
+    value=st.session_state.skip_merge,
 )
+st.session_state.skip_merge = skip_merge_checkbox
 
-# join_rules: list of dicts: {left_table, right_table, left_key, right_key, how}
-if "join_rules" not in st.session_state or st.session_state.join_rules is None:
-    st.session_state.join_rules = []
-
-# UI to add/edit join rules
-new_join_expander = st.expander("Add / Edit Join Rules", expanded=True)
-
-with new_join_expander:
-    st.write("Each join rule merges a RIGHT table into a LEFT table on specific key columns.")
-
-    # Show current join rules
-    if st.session_state.join_rules:
-        st.markdown("**Current Join Rules:**")
-        for idx, jr in enumerate(st.session_state.join_rules):
-            st.write(
-                f"{idx+1}. {jr['left_table']}.{jr['left_key']} "
-                f"{jr.get('how','left').upper()} JOIN "
-                f"{jr['right_table']}.{jr['right_key']}"
-            )
-    else:
-        st.caption("No join rules yet.")
-
-    st.markdown("**Create / Update a Join Rule**")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        left_table_sel = st.selectbox("Left table", table_names, key="jr_left_table")
-    with col2:
-        right_table_sel = st.selectbox(
-            "Right table", [t for t in table_names if t != left_table_sel], key="jr_right_table"
-        )
-    with col3:
-        how_sel = st.selectbox("Join type", ["left", "inner", "right", "outer"], index=0, key="jr_how")
-
-    # suggest join keys
-    left_df = st.session_state.tables[left_table_sel]
-    right_df = st.session_state.tables[right_table_sel]
-
-    suggestions = suggest_join_keys_for_pair(left_df, left_table_sel, right_df, right_table_sel)
-    suggestion_text = (
-        ", ".join(
-            [
-                f"{s['left_col']} ↔ {s['right_col']} (score={s['score']:.2f})"
-                for s in suggestions[:3]
-            ]
-        )
-        if suggestions
-        else "No strong suggestion. Please choose manually."
+if skip_merge_checkbox:
+    merged_direct_file = st.file_uploader(
+        "Upload your merged table (CSV / Excel)",
+        type=["csv", "xlsx", "xls"],
+        key="merged_direct_file",
     )
-    st.caption(f"Auto join key suggestions (top 3): {suggestion_text}")
-
-    left_key = st.selectbox("Left key column", list(left_df.columns), key="jr_left_key")
-    right_key = st.selectbox("Right key column", list(right_df.columns), key="jr_right_key")
-
-    add_or_update = st.radio("Action", ["Add new", "Replace all"], horizontal=True)
-
-    if st.button("Apply Join Rule"):
-        new_rule = {
-            "left_table": left_table_sel,
-            "right_table": right_table_sel,
-            "left_key": left_key,
-            "right_key": right_key,
-            "how": how_sel,
-        }
-        if add_or_update == "Replace all":
-            st.session_state.join_rules = [new_rule]
+    if merged_direct_file is not None:
+        if merged_direct_file.name.endswith((".xlsx", ".xls")):
+            merged_direct_df = pd.read_excel(merged_direct_file)
         else:
-            st.session_state.join_rules.append(new_rule)
-        st.success("Join rule updated.")
+            merged_direct_df = pd.read_csv(merged_direct_file)
 
-    if st.button("Clear All Join Rules"):
+        st.session_state.merged_df = merged_direct_df
+        st.success("Merged table uploaded and will be used as the base table.")
+        st.subheader("Uploaded Merged Table Preview")
+        st.dataframe(merged_direct_df.head())
+
+
+# ---------- Step 2: Configure join rules (manual but with suggestions) ----------
+if not st.session_state.skip_merge:
+    st.header("Step 2: Configure Join Rules (Manual, with Suggestions)")
+
+    st.caption(
+        "You can define how tables are joined. This tool does NOT auto-chain joins; "
+        "you control each join rule for maximum reliability."
+    )
+
+    # join_rules: list of dicts: {left_table, right_table, left_key, right_key, how}
+    if "join_rules" not in st.session_state or st.session_state.join_rules is None:
         st.session_state.join_rules = []
-        st.success("All join rules cleared.")
 
-# Perform merge preview
-if st.button("Merge Tables with Current Join Rules"):
-    if not st.session_state.join_rules:
-        st.error("No join rules defined. Please define at least one.")
-    else:
-        merged_df = merge_tables_with_rules(st.session_state.tables, st.session_state.join_rules)
-        if merged_df is None:
-            st.error("Merge failed. Please check join rules.")
+    # UI to add/edit join rules
+    new_join_expander = st.expander("Add / Edit Join Rules", expanded=True)
+
+    with new_join_expander:
+        st.write("Each join rule merges a RIGHT table into a LEFT table on specific key columns.")
+
+        # Show current join rules
+        if st.session_state.join_rules:
+            st.markdown("**Current Join Rules:**")
+            for idx, jr in enumerate(st.session_state.join_rules):
+                st.write(
+                    f"{idx+1}. {jr['left_table']}.{jr['left_key']} "
+                    f"{jr.get('how','left').upper()} JOIN "
+                    f"{jr['right_table']}.{jr['right_key']}"
+                )
         else:
-            st.session_state.merged_df = merged_df
-            st.success("Tables merged successfully.")
-            st.subheader("Merged Table Preview")
-            st.dataframe(merged_df.head())
+            st.caption("No join rules yet.")
 
-if st.session_state.merged_df is None:
-    st.info("Please merge tables to continue.")
-    st.stop()
+        st.markdown("**Create / Update a Join Rule**")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            left_table_sel = st.selectbox("Left table", table_names, key="jr_left_table")
+        with col2:
+            right_table_sel = st.selectbox(
+                "Right table", [t for t in table_names if t != left_table_sel], key="jr_right_table"
+            )
+        with col3:
+            how_sel = st.selectbox("Join type", ["left", "inner", "right", "outer"], index=0, key="jr_how")
 
-st.markdown("---")
+        # suggest join keys
+        left_df = st.session_state.tables[left_table_sel]
+        right_df = st.session_state.tables[right_table_sel]
+
+        suggestions = suggest_join_keys_for_pair(left_df, left_table_sel, right_df, right_table_sel)
+        suggestion_text = (
+            ", ".join(
+                [
+                    f"{s['left_col']} ↔ {s['right_col']} (score={s['score']:.2f})"
+                    for s in suggestions[:3]
+                ]
+            )
+            if suggestions
+            else "No strong suggestion. Please choose manually."
+        )
+        st.caption(f"Auto join key suggestions (top 3): {suggestion_text}")
+
+        left_key = st.selectbox("Left key column", list(left_df.columns), key="jr_left_key")
+        right_key = st.selectbox("Right key column", list(right_df.columns), key="jr_right_key")
+
+        add_or_update = st.radio("Action", ["Add new", "Replace all"], horizontal=True)
+
+        if st.button("Apply Join Rule"):
+            new_rule = {
+                "left_table": left_table_sel,
+                "right_table": right_table_sel,
+                "left_key": left_key,
+                "right_key": right_key,
+                "how": how_sel,
+            }
+            if add_or_update == "Replace all":
+                st.session_state.join_rules = [new_rule]
+            else:
+                st.session_state.join_rules.append(new_rule)
+            st.success("Join rule updated.")
+
+        if st.button("Clear All Join Rules"):
+            st.session_state.join_rules = []
+            st.success("All join rules cleared.")
+
+    # Perform merge preview
+    if st.button("Merge Tables with Current Join Rules"):
+        if not st.session_state.join_rules:
+            st.error("No join rules defined. Please define at least one.")
+        else:
+            merged_df = merge_tables_with_rules(st.session_state.tables, st.session_state.join_rules)
+            if merged_df is None:
+                st.error("Merge failed. Please check join rules.")
+            else:
+                st.session_state.merged_df = merged_df
+                st.success("Tables merged successfully.")
+                st.subheader("Merged Table Preview")
+                st.dataframe(merged_df.head())
+else:
+    # ⭐ 如果用户选择 skip merge，就在 Step 2 显示一个提示，而不再强制配置 join
+    st.header("Step 2: Merge Tables (Skipped)")
+    st.caption("You chose to use an already merged table in Step 1, so this step is skipped.")
+
 
 # ---------- Step 3: Configure mapping (AI Guess + manual override) ----------
 st.header("Step 3: Configure Target Table D Mapping")
@@ -239,9 +268,10 @@ if d_sample_file:
         st.session_state.mapping_df = mapping_df
         st.success("Initial mapping guessed. You can adjust it below.")
 
-if st.session_state.mapping_df is None:
-    st.info("Please upload D sample and click 'Auto-Guess Mapping' to continue.")
+if st.session_state.merged_df is None:
+    st.info("Please either merge tables in Step 2, or upload a merged table in Step 1.")
     st.stop()
+
 
 st.subheader("Edit Column Mapping")
 st.caption(
@@ -351,3 +381,4 @@ if st.button("Run transform(row) on merged table"):
             )
     except Exception as e:
         st.error(f"Unexpected error: {e}")
+
