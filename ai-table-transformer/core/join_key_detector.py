@@ -1,29 +1,53 @@
-def levenshtein(a: str, b: str) -> int:
-    """Simple Levenshtein distance."""
-    a, b = a or "", b or ""
-    if a == b:
-        return 0
-    if len(a) == 0:
-        return len(b)
-    if len(b) == 0:
-        return len(a)
-    v0 = list(range(len(b) + 1))
-    v1 = [0] * (len(b) + 1)
-    for i in range(len(a)):
-        v1[0] = i + 1
-        for j in range(len(b)):
-            cost = 0 if a[i] == b[j] else 1
-            v1[j + 1] = min(v1[j] + 1, v0[j + 1] + 1, v0[j] + cost)
-        v0, v1 = v1, v0
-    return v0[len(b)]
+from utils.similarity import name_similarity
+from core.type_detector import detect_column_type
+import pandas as pd
 
 
-def name_similarity(a: str, b: str) -> float:
-    """Normalized similarity between two column names."""
-    if not a and not b:
-        return 1.0
-    a = (a or "").lower()
-    b = (b or "").lower()
-    dist = levenshtein(a, b)
-    max_len = max(len(a), len(b), 1)
-    return 1.0 - dist / max_len
+def suggest_join_keys_for_pair(
+    df_left: pd.DataFrame,
+    left_name: str,
+    df_right: pd.DataFrame,
+    right_name: str,
+    max_suggestions: int = 5,
+):
+    """
+    Suggest possible join key pairs between df_left and df_right,
+    based on column name similarity + heuristic type similarity + value overlap.
+    Returns a list of dicts: {left_col, right_col, score}.
+    """
+    suggestions = []
+
+    for lc in df_left.columns:
+        left_type = detect_column_type(df_left[lc], lc)
+        left_values = set(df_left[lc].dropna().astype(str).head(200))
+
+        for rc in df_right.columns:
+            right_type = detect_column_type(df_right[rc], rc)
+            right_values = set(df_right[rc].dropna().astype(str).head(200))
+
+            # type compatibility
+            type_score = 1.0 if left_type == right_type else 0.6
+
+            # name similarity
+            ns = name_similarity(lc, rc)
+
+            # value overlap
+            if left_values and right_values:
+                inter = left_values & right_values
+                overlap_ratio = len(inter) / max(len(left_values), 1)
+            else:
+                overlap_ratio = 0.0
+
+            score = 0.5 * ns + 0.2 * type_score + 0.3 * overlap_ratio
+            if score > 0.3:  # threshold
+                suggestions.append(
+                    {
+                        "left_col": lc,
+                        "right_col": rc,
+                        "score": score,
+                    }
+                )
+
+    suggestions.sort(key=lambda x: x["score"], reverse=True)
+    return suggestions[:max_suggestions]
+
