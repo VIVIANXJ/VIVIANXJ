@@ -301,6 +301,33 @@ if mapping_df_state is None or not isinstance(mapping_df_state, pd.DataFrame) or
     st.info("Please upload a D sample and click 'Auto-Guess Mapping' (or load a template) before editing the mapping.")
     st.stop()
 
+
+st.subheader("Common Expression Templates")
+
+common_expr = {
+    "Split by space (first part)": 'row["{col}"].split(" ")[0]',
+    "Split by space (second part)": 'row["{col}"].split(" ")[1]',
+    "Split by space (third part)": 'row["{col}"].split(" ")[2]',
+    "Split by comma (first part)": 'row["{col}"].split(",")[0]',
+    "Split by comma (second part)": 'row["{col}"].split(",")[1]',
+    "Split by comma (third part)": 'row["{col}"].split(",")[2]',
+    "Strip whitespace": 'row["{col}"].strip()',
+    "Get first item of any delimiter": 'row["{col}"].split(delimiter)[0]',
+    "Get last item of any delimiter": 'row["{col}"].split(delimiter)[-1]',
+}
+
+selected_expr = st.selectbox(
+    "Choose an expression template to insert",
+    ["(Select a template)"] + list(common_expr.keys())
+)
+
+if selected_expr != "(Select a template)":
+    st.info(
+        f"Selected template:\n\n```\n{common_expr[selected_expr]}\n```"
+        "\nReplace `{col}` with the source column."
+    )
+
+
 st.subheader("Edit Column Mapping")
 st.caption(
     "For each target column, choose a source column from merged table or leave empty and/or add an expression."
@@ -409,6 +436,7 @@ if st.button("Run transform(row) on merged table"):
             )
     except Exception as e:
         st.error(f"Unexpected error: {e}")
+
 
 
 
