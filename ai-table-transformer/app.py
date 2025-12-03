@@ -268,10 +268,12 @@ if d_sample_file:
         st.session_state.mapping_df = mapping_df
         st.success("Initial mapping guessed. You can adjust it below.")
 
-if st.session_state.merged_df is None:
-    st.info("Please either merge tables in Step 2, or upload a merged table in Step 1.")
-    st.stop()
+# ---- guard: ensure mapping_df is ready ----
+mapping_df_state = st.session_state.get("mapping_df", None)
 
+if mapping_df_state is None or not isinstance(mapping_df_state, pd.DataFrame) or mapping_df_state.empty:
+    st.info("Please upload a D sample and click 'Auto-Guess Mapping' (or load a template) before editing the mapping.")
+    st.stop()
 
 st.subheader("Edit Column Mapping")
 st.caption(
@@ -279,7 +281,8 @@ st.caption(
 )
 
 merged_columns = list(st.session_state.merged_df.columns)
-mapping_df = st.session_state.mapping_df.copy()
+mapping_df = mapping_df_state.copy()
+
 
 editable_rows = []
 for idx, row in mapping_df.iterrows():
@@ -381,4 +384,5 @@ if st.button("Run transform(row) on merged table"):
             )
     except Exception as e:
         st.error(f"Unexpected error: {e}")
+
 
