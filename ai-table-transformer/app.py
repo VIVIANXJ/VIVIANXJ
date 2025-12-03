@@ -113,6 +113,28 @@ table_names = list(st.session_state.tables.keys())
 
 st.markdown("---")
 
+# ⭐ Allow user to pick one of the uploaded tables as the merged base table
+st.subheader("Optional: Use one of the uploaded tables as the merged base table")
+
+use_uploaded_as_merged = st.checkbox(
+    "Use one of the uploaded source tables directly as the merged table (skip Step 2 join)",
+    value=False
+)
+
+if use_uploaded_as_merged:
+    selected_merged_table = st.selectbox(
+        "Select the table to use as merged table",
+        table_names,
+        key="select_direct_merged"
+    )
+
+    if selected_merged_table:
+        st.session_state.merged_df = st.session_state.tables[selected_merged_table]
+        st.session_state.skip_merge = True   # auto-skip Step 2
+        st.success(f"Using '{selected_merged_table}' as the merged base table.")
+        st.subheader("Merged Table Preview")
+        st.dataframe(st.session_state.merged_df.head())
+
 # ⭐ 新增：允许跳过 Step 2，直接上传已经合并好的总表
 st.subheader("Optional: Use an already merged table")
 
@@ -387,6 +409,7 @@ if st.button("Run transform(row) on merged table"):
             )
     except Exception as e:
         st.error(f"Unexpected error: {e}")
+
 
 
 
