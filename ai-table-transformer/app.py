@@ -36,6 +36,8 @@ if "template_loaded" not in st.session_state:
     st.session_state.template_loaded = None
 if "skip_merge" not in st.session_state:
     st.session_state.skip_merge = False
+if "d_sample_df" not in st.session_state:
+    st.session_state.d_sample_df = None
 
 
 # ---------- Step 0: Template load / save ----------
@@ -259,6 +261,8 @@ if d_sample_file:
     else:
         d_sample_df = pd.read_csv(d_sample_file)
 
+    st.session_state.d_sample_df = d_sample_df
+
     st.subheader("Target Table D Sample Preview")
     st.dataframe(d_sample_df.head())
 
@@ -322,17 +326,15 @@ st.header("Step 4: Generate transform(row) Code via Local deepseek-coder (Ollama
 
 if st.button("Generate transform(row) with DeepSeek (based on mapping & samples)"):
     merged_sample_csv = df_to_sample_csv(st.session_state.merged_df, n_rows=10)
-    # Build a fake D sample from mapping_df + merged sample (optional),
-    # but here we simply reuse the uploaded D sample if available,
-    # otherwise we synthesize a header-only CSV.
-    if d_sample_file:
-        if d_sample_file.name.endswith((".xlsx", ".xls")):
-            d_sample_df = pd.read_excel(d_sample_file)
-        else:
-            d_sample_df = pd.read_csv(d_sample_file)
-    else:
-        # synthesize D schema from mapping_df
+
+    # ⭐ 优先使用在 Step 3 已经读好的 d_sample_df
+    d_sample_df_state = st.session_state.get("d_sample_df", None)
+
+    if d_sample_df_state is None or not isinstance(d_sample_df_state, pd.DataFrame) or d_sample_df_state.empty:
+        # 如果没有有效的 D sample，就根据 mapping 的 target 列名造一个只带表头的空 df
         d_sample_df = pd.DataFrame(columns=mapping_df["target_column"].tolist())
+    else:
+        d_sample_df = d_sample_df_state
 
     d_sample_csv = df_to_sample_csv(d_sample_df, n_rows=10)
 
@@ -347,6 +349,7 @@ if st.button("Generate transform(row) with DeepSeek (based on mapping & samples)
         st.success("Transform code generated.")
     except Exception as e:
         st.error(f"Failed to generate transform code: {e}")
+
 
 if not st.session_state.transform_code:
     st.info("Transform code not generated yet. Click the button above to generate.")
@@ -384,5 +387,6 @@ if st.button("Run transform(row) on merged table"):
             )
     except Exception as e:
         st.error(f"Unexpected error: {e}")
+
 
 
