@@ -273,7 +273,8 @@ for idx, row in mapping_df.iterrows():
             "target_column": row["target_column"],
             "source_column": None if source_choice == "<None>" else source_choice,
             "expression": expr.strip() or None,
-        )
+        }
+    )
 
 mapping_df = pd.DataFrame(editable_rows)
 st.session_state.mapping_df = mapping_df
